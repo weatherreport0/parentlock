@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Защита</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1d1f23; --muted:#6b7078; --line:#e3e5e8;
+          --accent:#2f6fde; --ok:#1f9d55; --warn:#c77700; --bad:#d23f3f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141518; --card:#1e2024; --text:#eceef1; --muted:#9aa0a8; --line:#2d3036; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background:var(--bg); color:var(--text); }
+  main { max-width:760px; margin:0 auto; padding:16px 14px 60px; }
+  h1 { font-size:22px; margin:6px 0 14px; display:flex; align-items:center; gap:10px; }
+  h2 { font-size:17px; margin:0 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .muted { color:var(--muted); font-size:14px; }
+  .big { font-size:21px; font-weight:600; margin:2px 0 6px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--text);
+           border-radius:10px; padding:10px 12px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  input, select { font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:10px;
+                  background:var(--bg); color:var(--text); }
+  input[type=number] { width:90px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:14px; color:var(--muted); }
+  .bar { height:8px; background:var(--line); border-radius:6px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--accent); }
+  .pill { font-size:13px; padding:2px 9px; border-radius:20px; background:var(--line); }
+  .pill.ok { background:#1f9d5522; color:var(--ok); } .pill.bad { background:#d23f3f22; color:var(--bad); }
+  .pill.warn { background:#c7770022; color:var(--warn); }
+  .app { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center;
+         padding:8px 0; border-top:1px solid var(--line); }
+  .app:first-child { border-top:0; }
+  .app .name { overflow:hidden; text-overflow:ellipsis; }
+  .use { display:grid; grid-template-columns:minmax(90px,38%) 1fr auto; gap:10px; align-items:center; margin:6px 0; }
+  .req { border:1px solid var(--line); border-radius:12px; padding:10px; margin-top:8px; }
+  iframe { width:100%; height:300px; border:0; border-radius:10px; }
+  .ev { padding:6px 0; border-top:1px solid var(--line); font-size:14px; }
+  .ev:first-child { border-top:0; }
+  .hidden { display:none !important; }
+  .sw { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:10px 0; border-top:1px solid var(--line); }
+  .sw:first-of-type { border-top:0; }
+  .sw input[type=checkbox] { width:22px; height:22px; flex:none; }
+  .app .more { padding:6px 10px; }
+  .details { grid-column:1 / -1; background:var(--bg); border-radius:10px; padding:10px; }
+  .details .perm { display:flex; justify-content:space-between; align-items:center; padding:4px 0; }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#222; color:#fff;
+           padding:10px 16px; border-radius:10px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #toast.show { opacity:.95; }
+  .days { display:flex; gap:6px; align-items:flex-end; height:110px; }
+  .days div { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px;
+              font-size:11px; color:var(--muted); height:100%; }
+  .days span { width:100%; background:var(--accent); border-radius:5px 5px 0 0; min-height:2px; }
+</style>
+</head>
+<body>
+<main>
+  <section id="login" class="card hidden">
+    <h2>Вход для родителя</h2>
+    <div class="row">
+      <input id="pw" type="password" placeholder="Пароль" autocomplete="current-password">
+      <button class="primary" id="loginBtn">Войти</button>
+    </div>
+    <p id="loginErr" class="muted"></p>
+  </section>
+
+  <div id="app" class="hidden">
+    <h1>🛡️ Защита <span id="online" class="pill"></span></h1>
+
+    <section data-shot="pair" class="card hidden" id="pairCard">
+      <h2>Подключите телефон</h2>
+      <p class="muted">На телефоне сына: «Защита» → «Вход для родителя» → «Сайт управления». Введите адрес этого сайта и код.</p>
+      <div class="row"><button class="primary" id="pairBtn">Получить код</button><span class="big" id="pairCode"></span></div>
+    </section>
+
+    <section data-shot="status" class="card">
+      <div class="muted" id="modeLine"></div>
+      <div class="big" id="headline">—</div>
+      <div class="bar"><div id="usedBar" style="width:0"></div></div>
+      <p class="muted" id="usedLine"></p>
+      <p class="muted" id="deviceLine"></p>
+      <p class="muted hidden" id="setupWarn">⚠️ На телефоне включён режим настройки: Play Маркет, установка APK и отладка открыты. Выключите его в «Защите» на телефоне, когда закончите.</p>
+    </section>
+
+    <section data-shot="actions" class="card">
+      <h2>Быстрые действия</h2>
+      <div class="grid">
+        <button data-cmd="bonus" data-min="15">+15 минут</button>
+        <button data-cmd="bonus" data-min="30">+30 минут</button>
+        <button data-cmd="bonus" data-min="60">+1 час</button>
+        <button data-cmd="free" data-min="60">Без ограничений на час</button>
+        <button data-cmd="play" data-min="15">Открыть Play Маркет на 15 мин</button>
+        <button id="lockBtn">Заблокировать</button>
+        <button data-cmd="ring" data-min="1">🔔 Найти телефон (громкий звонок)</button>
+      </div>
+      <p class="muted">Звонки, сообщения и приложения «всегда разрешено» работают и при блокировке.</p>
+    </section>
+
+    <section data-shot="requests" class="card" id="reqCard">
+      <h2>Запросы</h2>
+      <div id="reqs" class="muted">Запросов нет</div>
+    </section>
+
+    <section data-shot="map" class="card">
+      <div class="row" style="justify-content:space-between"><h2>Где он</h2>
+        <button id="locateBtn">Обновить</button></div>
+      <div id="map" class="muted">Местоположение пока не получено</div>
+    </section>
+
+    <section data-shot="today" class="card">
+      <h2>Сегодня</h2>
+      <div id="usage" class="muted">Нет данных</div>
+    </section>
+
+    <section data-shot="time" class="card">
+      <h2>Время</h2>
+      <p class="muted">Лимит: 0 — без лимита. Сон: пусто — выключен. Выходные: пусто — как в будни.</p>
+      <b>Будни</b>
+      <div class="row" style="gap:14px;margin:6px 0 12px">
+        <label>Лимит, минут<input id="limit" type="number" min="0" max="1440"></label>
+        <label>Сон с<input id="sleepS" type="time"></label>
+        <label>до<input id="sleepE" type="time"></label>
+      </div>
+      <b>Выходные</b> <span class="muted">(лимит — сб и вс; сон — в ночь на сб и на вс)</span>
+      <div class="row" style="gap:14px;margin:6px 0 12px">
+        <label>Лимит, минут<input id="limitWe" type="number" min="0" max="1440" placeholder="как в будни"></label>
+        <label>Сон с<input id="sleepWeS" type="time"></label>
+        <label>до<input id="sleepWeE" type="time"></label>
+      </div>
+      <div class="row"><button class="primary" id="saveRules">Сохранить</button></div>
+    </section>
+
+    <section data-shot="device" class="card">
+      <h2>Устройство</h2>
+      <div class="sw"><div><b>Установка из Play Маркета без спроса</b>
+        <div class="muted">Выключено: Play Маркет закрыт, сын просит приложение, вы открываете на 15 минут.</div></div>
+        <input type="checkbox" data-flag="play_free"></div>
+      <div class="sw"><div><b>Неизвестные источники</b>
+        <div class="muted">Установка APK-файлов, RuStore и других магазинов.</div></div>
+        <input type="checkbox" data-flag="apk"></div>
+      <div class="sw"><div><b>Режим разработчика и отладка по USB</b>
+        <div class="muted">Нужно только для подключения к компьютеру.</div></div>
+        <input type="checkbox" data-flag="debug"></div>
+      <div class="sw"><div><b>Добавление и удаление аккаунтов</b>
+        <div class="muted">Google и другие аккаунты в настройках телефона.</div></div>
+        <input type="checkbox" data-flag="accounts"></div>
+      <div class="sw"><div><b>Фильтр взрослых сайтов</b>
+        <div class="muted">Семейный DNS Яндекса во всех браузерах и приложениях.</div></div>
+        <input type="checkbox" data-flag="filter"></div>
+      <div class="sw"><div><b>Новые запросы разрешений</b>
+        <div class="muted">Камера, микрофон, геолокация и т. п. Для отдельных приложений — в списке ниже, кнопка ⋯</div></div>
+        <select id="permPolicy"><option value="0">решает сын</option><option value="2">запрещать</option></select></div>
+      <p class="muted">Всегда запрещено: сброс до заводских, безопасный режим, отключение геолокации, режим полёта,
+        смена даты, новые пользователи, удаление и остановка приложений, PIN на экране.</p>
+    </section>
+
+    <section data-shot="apps" class="card">
+      <h2>Приложения</h2>
+      <p class="muted">«Всегда разрешено» не тратит лимит и работает во время сна и блокировки. Число — отдельный лимит в минутах.</p>
+      <input id="appSearch" placeholder="Поиск" style="width:100%;margin-bottom:8px">
+      <div id="apps" class="muted">Список появится, когда телефон выйдет на связь</div>
+    </section>
+
+    <section data-shot="days" class="card">
+      <h2>Последние 14 дней</h2>
+      <div id="days" class="days"></div>
+    </section>
+
+    <section data-shot="events" class="card">
+      <h2>События</h2>
+      <div id="events" class="muted">Пока пусто</div>
+    </section>
+
+    <section data-shot="settings" class="card">
+      <h2>Настройки</h2>
+      <div class="row">
+        <input id="oldPw" type="password" placeholder="Старый пароль" autocomplete="current-password">
+        <input id="newPw" type="password" placeholder="Новый пароль (от 8 символов)" autocomplete="new-password">
+        <button id="pwBtn">Сменить пароль</button>
+      </div>
+      <p class="muted" id="verLine"></p>
+      <div class="row" style="margin-top:10px">
+        <button id="updateBtn">Обновить приложение на телефоне</button>
+        <button id="repairBtn">Подключить телефон заново</button>
+        <button id="logoutBtn" class="danger">Выйти</button>
+      </div>
+    </section>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let D = null, rulesLoaded = false, appsKey = '';
+const openApps = new Set();
+const PERM_NAMES = {camera:'📷 Камера', mic:'🎤 Микрофон', location:'📍 Геолокация', contacts:'👥 Контакты',
+                    phone:'📞 Звонки', sms:'✉️ SMS', media:'🖼 Фото, видео и файлы'};
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmt(ms) { const m = Math.max(0, Math.floor((ms || 0) / 60000)); return m < 60 ? m + ' мин' : Math.floor(m / 60) + ' ч ' + String(m % 60).padStart(2, '0') + ' мин'; }
+function clock(ts) { return new Date(ts).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'}); }
+function when(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts), n = new Date();
+  const same = d.toDateString() === n.toDateString();
+  return same ? clock(ts) : d.toLocaleDateString('ru-RU', {day:'numeric', month:'short'}) + ' ' + clock(ts);
+}
+function ago(ts) { const s = (Date.now() - ts) / 1000; return s < 90 ? 'только что' : s < 3600 ? Math.round(s / 60) + ' мин назад' : when(ts); }
+function hm(m) { return m < 0 ? '' : String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+function mins(v) { if (!v) return -1; const [h, m] = v.split(':').map(Number); return h * 60 + m; }
+function toast(t) { const e = $('#toast'); e.textContent = t; e.classList.add('show'); clearTimeout(e._t); e._t = setTimeout(() => e.classList.remove('show'), 2600); }
+
+async function api(path, body) {
+  const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {})});
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('Нужно войти'); }
+  if (!r.ok) throw new Error(j.error || ('Ошибка ' + r.status));
+  return j;
+}
+async function act(fn, msg) { try { await fn(); if (msg) toast(msg); await load(); } catch (e) { toast(e.message); } }
+
+function showLogin() { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); $('#pw').focus(); }
+$('#loginBtn').onclick = async () => {
+  try { await api('/api/login', {password: $('#pw').value}); $('#pw').value = ''; $('#loginErr').textContent = ''; await load(); }
+  catch (e) { $('#loginErr').textContent = e.message; }
+};
+$('#pw').onkeydown = e => { if (e.key === 'Enter') $('#loginBtn').click(); };
+
+async function load() {
+  D = await api('/api/dashboard');
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  render();
+}
+
+function labels() {
+  const m = {};
+  for (const a of (D.state.apps || [])) m[a.p] = a.l;
+  return m;
+}
+
+function render() {
+  const s = D.state || {}, c = D.config, L = labels();
+  const seen = s.received || 0, online = seen && (D.now - seen) < 3 * 60000;
+  $('#online').textContent = !D.paired ? 'не подключён' : online ? 'на связи' : 'не на связи';
+  $('#online').className = 'pill ' + (!D.paired ? 'warn' : online ? 'ok' : 'bad');
+  $('#pairCard').classList.toggle('hidden', D.paired);
+  $('#pairCode').textContent = D.pairCode || '';
+
+  $('#headline').textContent = s.headline || '—';
+  const total = (s.limitMin + (s.bonusMin || 0)) * 60000;
+  $('#usedBar').style.width = total > 0 ? Math.min(100, 100 * s.usedMs / total) + '%' : '0';
+  $('#usedLine').textContent = s.usedMs == null ? '' : 'Использовано сегодня: ' + fmt(s.usedMs) +
+      (s.limitMin > 0 ? ' из ' + fmt(total) + (s.bonusMin ? ' (с бонусом ' + s.bonusMin + ' мин)' : '') : ', лимит не задан');
+  const modes = {normal:'Обычный режим', free:'Без ограничений', sleep:'Режим сна', limit:'Лимит исчерпан',
+                 locked:'Заблокирован вами', tamper:'Заблокирован: отключён учёт времени'};
+  $('#modeLine').textContent = modes[s.mode] || '';
+  $('#deviceLine').textContent = seen ? 'Связь: ' + ago(seen) + (s.battery != null ? ' · Батарея ' + s.battery + '%' + (s.charging ? ' ⚡' : '') : '') : '';
+  $('#setupWarn').classList.toggle('hidden', !s.setup);
+  $('#lockBtn').textContent = c.locked ? 'Разблокировать' : 'Заблокировать';
+  $('#lockBtn').className = c.locked ? 'primary' : '';
+
+  // requests
+  const pend = D.requests.filter(r => r.status === 'pending');
+  const old = D.requests.filter(r => r.status !== 'pending').slice(0, 5);
+  $('#reqs').innerHTML = (pend.length || old.length) ? pend.map(r => `
+    <div class="req"><b>${r.type === 'time' ? '⏱ Просит ещё времени' : '📲 Просит приложение: «' + esc(r.text) + '»'}</b>
+      <div class="muted">${when(r.created)}</div>
+      <div class="row" style="margin-top:8px">${r.type === 'time'
+        ? [15, 30, 60].map(m => `<button data-req="${esc(r.id)}" data-min="${m}" class="primary">+${m} мин</button>`).join('')
+        : `<button data-req="${esc(r.id)}" data-min="15" class="primary">Открыть Play на 15 мин</button>`}
+        <button data-req="${esc(r.id)}" data-deny="1">Отказать</button></div></div>`).join('')
+    + old.map(r => `<div class="ev">${r.status === 'approved' ? '✅' : '✖️'} ${r.type === 'time' ? 'Время' : 'Приложение «' + esc(r.text) + '»'} · ${when(r.created)}</div>`).join('')
+    : 'Запросов нет';
+
+  // map
+  const ll = D.lastLocation;
+  if (ll) {
+    const d = 0.006;
+    const src = `https://www.openstreetmap.org/export/embed.html?bbox=${ll.lon - d},${ll.lat - d},${ll.lon + d},${ll.lat + d}&layer=mapnik&marker=${ll.lat},${ll.lon}`;
+    if ($('#map').dataset.src !== src) {
+      $('#map').dataset.src = src;
+      $('#map').innerHTML = `<iframe src="${src}"></iframe>
+        <p class="muted">Обновлено ${ago(ll.ts)}, точность ~${Math.round(ll.acc)} м ·
+        <a href="https://yandex.ru/maps/?pt=${ll.lon},${ll.lat}&z=17&l=map" target="_blank" rel="noopener">Открыть в Яндекс Картах</a></p>`;
+    }
+  }
+
+  // usage today
+  const u = Object.entries(s.usage || {}).filter(([, ms]) => ms >= 60000).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const mx = u.length ? u[0][1] : 1;
+  $('#usage').innerHTML = u.length ? u.map(([p, ms]) => `<div class="use"><span>${esc(L[p] || p)}</span>
+      <div class="bar"><div style="width:${100 * ms / mx}%"></div></div><span class="muted">${fmt(ms)}</span></div>`).join('') : 'Пока ничего';
+
+  // rules (only fill once, so typing isn't overwritten)
+  if (!rulesLoaded) {
+    $('#limit').value = c.limit; $('#sleepS').value = hm(c.sleep_s); $('#sleepE').value = hm(c.sleep_e);
+    $('#limitWe').value = c.limit_we >= 0 ? c.limit_we : '';
+    $('#sleepWeS').value = hm(c.sleep_we_s); $('#sleepWeE').value = hm(c.sleep_we_e);
+    rulesLoaded = true;
+  }
+  document.querySelectorAll('[data-flag]').forEach(x => { if (x !== document.activeElement) x.checked = !!c[x.dataset.flag]; });
+  if ($('#permPolicy') !== document.activeElement) $('#permPolicy').value = String(c.perm_policy || 0);
+  $('#verLine').textContent = 'Версия «Защиты» на телефоне: ' + (s.appVersion || '—') + (D.apkVersion ? ' · на сайте: ' + D.apkVersion : '');
+  $('#updateBtn').disabled = !D.apkVersion || D.apkVersion === s.appVersion;
+
+  // apps
+  const apps = (s.apps || []).slice().sort((a, b) => a.l.localeCompare(b.l, 'ru'));
+  const key = JSON.stringify([apps, c.allowed, c.blocked, c.applimits, c.perms, [...openApps]]);
+  const editing = document.activeElement?.closest('#apps') && /^(INPUT|SELECT)$/.test(document.activeElement.tagName);
+  if (key !== appsKey && !editing) {
+    appsKey = key;
+    $('#apps').innerHTML = apps.length ? apps.map(a => {
+      const cat = c.blocked.includes(a.p) ? 2 : c.allowed.includes(a.p) ? 1 : 0;
+      const lim = c.applimits[a.p] || '';
+      const used = (s.usage || {})[a.p];
+      const pp = c.perms[a.p] || {};
+      const details = !openApps.has(a.p) ? '' : `<div class="details">
+          ${(a.g || []).length ? '<div class="muted">Разрешения</div>' + a.g.map(g => `<div class="perm"><span>${PERM_NAMES[g] || g}</span>
+            <select data-perm="${esc(a.p)}" data-group="${g}">
+              <option value="0"${!pp[g] ? ' selected' : ''}>решает сын</option>
+              <option value="1"${pp[g] === 1 ? ' selected' : ''}>разрешено</option>
+              <option value="2"${pp[g] === 2 ? ' selected' : ''}>запрещено</option></select></div>`).join('')
+            : '<div class="muted">Приложение не просит особых разрешений</div>'}
+          ${a.u ? `<div class="row" style="margin-top:8px"><button class="danger" data-uninstall="${esc(a.p)}" data-label="${esc(a.l)}">Удалить приложение</button></div>` : ''}
+        </div>`;
+      return `<div class="app" data-name="${esc(a.l.toLowerCase())}"><div class="name">${esc(a.l)}
+          ${used >= 60000 ? `<div class="muted">сегодня ${fmt(used)}</div>` : ''}</div>
+        <select data-app="${esc(a.p)}">
+          <option value="0"${cat === 0 ? ' selected' : ''}>обычное</option>
+          <option value="1"${cat === 1 ? ' selected' : ''}>✅ всегда разрешено</option>
+          <option value="2"${cat === 2 ? ' selected' : ''}>⛔ заблокировано</option></select>
+        <div class="row" style="flex-wrap:nowrap;gap:6px">
+          <input type="number" min="0" max="1440" placeholder="лимит" value="${lim}" data-lim="${esc(a.p)}" title="Отдельный лимит, минут в день"${cat ? ' disabled' : ''}>
+          <button class="more" data-more="${esc(a.p)}" title="Разрешения и удаление">⋯</button></div>
+        ${details}</div>`;
+    }).join('') : 'Список появится, когда телефон выйдет на связь';
+    filterApps();
+  }
+
+  // days
+  const days = D.days.slice().reverse(), dm = Math.max(1, ...days.map(d => d.usedMs));
+  $('#days').innerHTML = days.map(d => `<div title="${fmt(d.usedMs)}"><span style="height:${85 * d.usedMs / dm}%"></span>
+      ${d.day.slice(8)}.${d.day.slice(5, 7)}</div>`).join('');
+
+  $('#events').innerHTML = D.events.length ? D.events.map(e => `<div class="ev"><span class="muted">${when(e.ts)}</span> ${esc(e.text)}</div>`).join('') : 'Пока пусто';
+}
+
+function filterApps() {
+  const q = $('#appSearch').value.trim().toLowerCase();
+  document.querySelectorAll('#apps .app').forEach(r => r.classList.toggle('hidden', q && !r.dataset.name.includes(q)));
+}
+$('#appSearch').oninput = filterApps;
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.cmd) {
+    const names = {bonus:'Добавлено ' + b.dataset.min + ' мин', free:'Ограничения сняты на час',
+                   play:'Play Маркет откроется на 15 мин', ring:'Телефон зазвонит на 30 секунд'};
+    act(() => api('/api/command', {type: b.dataset.cmd, min: +b.dataset.min}), names[b.dataset.cmd] + '. Телефон применит в течение минуты.');
+  } else if (b.dataset.more) {
+    openApps.has(b.dataset.more) ? openApps.delete(b.dataset.more) : openApps.add(b.dataset.more);
+    b.blur(); appsKey = ''; render();
+  } else if (b.dataset.uninstall) {
+    if (confirm('Удалить «' + b.dataset.label + '» с телефона сына? Данные приложения будут потеряны.'))
+      act(() => api('/api/command', {type: 'uninstall', pkg: b.dataset.uninstall}), 'Приложение будет удалено в течение минуты');
+  } else if (b.dataset.req) {
+    act(() => api('/api/request', {id: b.dataset.req, approve: !b.dataset.deny, min: +b.dataset.min || 30}), b.dataset.deny ? 'Отказано' : 'Разрешено');
+  }
+});
+
+$('#lockBtn').onclick = () => act(() => api('/api/config', {config: {locked: !D.config.locked}}), D.config.locked ? 'Разблокировано' : 'Заблокировано');
+$('#locateBtn').onclick = () => act(() => api('/api/command', {type: 'locate'}), 'Запросил местоположение, обновится в течение минуты');
+$('#saveRules').onclick = () => {
+  const s = mins($('#sleepS').value), e = mins($('#sleepE').value);
+  const ws = mins($('#sleepWeS').value), we = mins($('#sleepWeE').value);
+  if ((s < 0) !== (e < 0) || (ws < 0) !== (we < 0)) { toast('Укажите и начало, и конец сна'); return; }
+  const lwe = $('#limitWe').value.trim();
+  act(() => api('/api/config', {config: {limit: +$('#limit').value || 0, sleep_s: s, sleep_e: e,
+    limit_we: lwe === '' ? -1 : (+lwe || 0), sleep_we_s: ws, sleep_we_e: we}}), 'Сохранено');
+};
+$('#updateBtn').onclick = () => act(() => api('/api/command', {type: 'update'}), 'Телефон скачает и поставит обновление в течение минуты');
+
+document.addEventListener('change', e => {
+  const t = e.target, c = D && D.config;
+  if (!c) return;
+  if (t.dataset.flag) {
+    const on = t.checked, f = t.dataset.flag;
+    const risky = {debug: 'Включить режим разработчика? Через него ребёнок с компьютером может обойти защиту. Включайте только на время.'};
+    if (on && risky[f] && !confirm(risky[f])) { t.checked = false; return; }
+    act(() => api('/api/config', {config: {[f]: on}}), on ? 'Разрешено' : 'Запрещено');
+  } else if (t.id === 'permPolicy') {
+    act(() => api('/api/config', {config: {perm_policy: +t.value}}), 'Сохранено');
+  } else if (t.dataset.perm) {
+    const perms = JSON.parse(JSON.stringify(c.perms)), p = t.dataset.perm, g = t.dataset.group, v = +t.value;
+    perms[p] = perms[p] || {};
+    if (v) perms[p][g] = v; else delete perms[p][g];
+    if (!Object.keys(perms[p]).length) delete perms[p];
+    act(() => api('/api/config', {config: {perms}}), 'Сохранено');
+  } else if (t.dataset.app) {
+    const p = t.dataset.app, v = +t.value;
+    const allowed = c.allowed.filter(x => x !== p), blocked = c.blocked.filter(x => x !== p), al = {...c.applimits};
+    if (v === 1) allowed.push(p);
+    if (v === 2) blocked.push(p);
+    if (v) delete al[p];
+    act(() => api('/api/config', {config: {allowed, blocked, applimits: al}}), 'Сохранено');
+  } else if (t.dataset.lim) {
+    const al = {...c.applimits}, v = +t.value;
+    if (v > 0) al[t.dataset.lim] = v; else delete al[t.dataset.lim];
+    act(() => api('/api/config', {config: {applimits: al}}), 'Лимит сохранён');
+  }
+});
+
+$('#pairBtn').onclick = () => act(() => api('/api/pair/new'), 'Код действует 15 минут');
+$('#repairBtn').onclick = () => { if (confirm('Получить новый код подключения? Старое подключение перестанет работать после ввода кода на телефоне.')) act(() => api('/api/pair/new').then(r => alert('Код: ' + r.code + '\nДействует 15 минут.'))); };
+$('#pwBtn').onclick = () => act(async () => { await api('/api/password', {old: $('#oldPw').value, new: $('#newPw').value}); $('#oldPw').value = $('#newPw').value = ''; showLogin(); }, 'Пароль изменён, войдите заново');
+$('#logoutBtn').onclick = async () => { await api('/api/logout'); showLogin(); };
+
+// ?only=status,actions shows only those cards; ?open=pkg opens an app's details (used for screenshots)
+const QS = new URLSearchParams(location.search);
+if (QS.get('open')) openApps.add(QS.get('open'));
+if (QS.get('only')) {
+  const keep = QS.get('only').split(',');
+  document.querySelectorAll('[data-shot]').forEach(e => { if (!keep.includes(e.dataset.shot)) e.style.display = 'none'; });
+}
+
+load().catch(() => {});
+setInterval(() => { if (!$('#app').classList.contains('hidden') && !document.hidden) load().catch(() => {}); }, 15000);
+</script>
+</body>
+</html>

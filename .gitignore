@@ -1,0 +1,18 @@
+# build output
+android/build/
+android/*.apk
+android/*.idsig
+
+# signing key — never commit, back it up separately
+*.jks
+*.keystore
+
+# server settings and published files
+server/deploy.env
+server/app.version
+server/app.apk
+
+# local data
+*.sqlite
+*.sqlite-*
+__pycache__/
