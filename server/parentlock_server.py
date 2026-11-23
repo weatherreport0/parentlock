@@ -3,7 +3,8 @@
 
 Run behind nginx (HTTPS). Listens on 127.0.0.1:PORT.
   python3 parentlock_server.py serve [--port 8765] [--db /var/lib/parentlock/db.sqlite]
-  python3 parentlock_server.py set-password   (reads the new password from stdin)
+  python3 parentlock_server.py set-password [--slot 2]   (reads the new password from stdin;
+                                                           slot 2 = second parent)
 """
 import hashlib
 import hmac
@@ -56,6 +57,10 @@ def open_db(path):
         CREATE TABLE IF NOT EXISTS locations (ts INTEGER, lat REAL, lon REAL, acc REAL);
         CREATE TABLE IF NOT EXISTS daily (day TEXT PRIMARY KEY, used_ms INTEGER, usage TEXT);
     """)
+    try:  # which parent the session belongs to (1 = main, 2 = second)
+        conn.execute("ALTER TABLE sessions ADD COLUMN slot INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     return conn
 
@@ -84,11 +89,27 @@ def hash_pw(pw, salt=None):
     return {"salt": salt, "hash": h}
 
 
-def check_pw(pw):
-    rec = kv_get("parent_pw")
+PW_KEYS = {1: "parent_pw", 2: "parent_pw2"}  # main parent, second parent
+
+
+def pw_matches(pw, slot):
+    rec = kv_get(PW_KEYS[slot])
     if not rec:
         return False
     return hmac.compare_digest(hash_pw(pw, rec["salt"])["hash"], rec["hash"])
+
+
+def check_pw(pw):
+    """Which parent this password belongs to: 1, 2, or 0."""
+    for slot in (1, 2):
+        if pw_matches(pw, slot):
+            return slot
+    return 0
+
+
+def set_pw(slot, pw):
+    kv_set(PW_KEYS[slot], hash_pw(pw))
+    db.execute("DELETE FROM sessions WHERE slot=?", (slot,))
 
 
 def clean_config(c):
@@ -224,9 +245,12 @@ def dashboard():
     }
 
 
-def api_parent(path, body):
+def api_parent(path, body, slot=1):
     if path == "/api/dashboard":
-        return 200, dashboard()
+        d = dashboard()
+        d["me"] = slot
+        d["hasSecond"] = kv_get(PW_KEYS[2]) is not None
+        return 200, d
     if path == "/api/config":
         cur = clean_config(kv_get("config", DEFAULT_CONFIG))
         merged = dict(cur)
@@ -271,14 +295,33 @@ def api_parent(path, body):
         code = f"{secrets.randbelow(900000) + 100000}"
         kv_set("pair", {"code": code, "expires": now_ms() + 15 * 60_000})
         return 200, {"code": code}
-    if path == "/api/password":
-        if not check_pw(str(body.get("old", ""))):
+    if path == "/api/password":  # change your own password
+        if not pw_matches(str(body.get("old", "")), slot):
             return 403, {"error": "Старый пароль неверный"}
         new = str(body.get("new", ""))
         if len(new) < 8:
             return 400, {"error": "Новый пароль короче 8 символов"}
-        kv_set("parent_pw", hash_pw(new))
-        db.execute("DELETE FROM sessions")
+        if pw_matches(new, 3 - slot):
+            return 400, {"error": "Пароль должен отличаться от пароля другого родителя"}
+        set_pw(slot, new)
+        return 200, {"ok": True}
+    if path == "/api/password2":  # main parent sets or deletes the second parent's password
+        if slot != 1:
+            return 403, {"error": "Это может только основной родитель"}
+        if not pw_matches(str(body.get("current", "")), 1):
+            return 403, {"error": "Ваш пароль неверный"}
+        new = str(body.get("new", ""))
+        if not new:
+            kv_set(PW_KEYS[2], None)
+            db.execute("DELETE FROM sessions WHERE slot=2")
+            add_event("Пароль второго родителя для сайта удалён")
+            return 200, {"ok": True}
+        if len(new) < 8:
+            return 400, {"error": "Пароль короче 8 символов"}
+        if pw_matches(new, 1):
+            return 400, {"error": "Пароль должен отличаться от вашего"}
+        set_pw(2, new)
+        add_event("Задан пароль второго родителя для сайта")
         return 200, {"ok": True}
     return 404, {"error": "not found"}
 
@@ -315,15 +358,16 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("bad body")
         return obj
 
-    def session_ok(self):
+    def session_slot(self):
+        """Logged-in parent: 1 or 2; 0 if not logged in."""
         if DEMO:
-            return True
+            return 1
         c = SimpleCookie(self.headers.get("Cookie", ""))
         sid = c.get("sid")
         if not sid:
-            return False
-        row = db.execute("SELECT expires FROM sessions WHERE h=?", (sha(sid.value),)).fetchone()
-        return bool(row and row[0] > now_ms())
+            return 0
+        row = db.execute("SELECT expires, slot FROM sessions WHERE h=?", (sha(sid.value),)).fetchone()
+        return (row[1] or 1) if row and row[0] > now_ms() else 0
 
     def device_ok(self):
         auth = self.headers.get("Authorization", "")
@@ -374,10 +418,11 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         self.send_json(*api_sync(body))
                 elif path.startswith("/api/"):
-                    if not self.session_ok():
+                    slot = self.session_slot()
+                    if not slot:
                         self.send_json(401, {"error": "login required"})
                     else:
-                        self.send_json(*api_parent(path, body))
+                        self.send_json(*api_parent(path, body, slot))
                 else:
                     self.send_json(404, {"error": "not found"})
                 db.commit()
@@ -394,14 +439,16 @@ class Handler(BaseHTTPRequestHandler):
         if len(fails) >= 8:
             self.send_json(429, {"error": "Слишком много попыток, подождите 15 минут"})
             return
-        if not check_pw(str(body.get("password", ""))):
+        slot = check_pw(str(body.get("password", "")))
+        if not slot:
             fails.append(t)
             time.sleep(1)
             self.send_json(403, {"error": "Неверный пароль"})
             return
         login_fails.pop(ip, None)
         sid = secrets.token_urlsafe(32)
-        db.execute("INSERT INTO sessions(h,expires) VALUES(?,?)", (sha(sid), now_ms() + SESSION_DAYS * 86400_000))
+        db.execute("INSERT INTO sessions(h,expires,slot) VALUES(?,?,?)",
+                   (sha(sid), now_ms() + SESSION_DAYS * 86400_000, slot))
         db.execute("DELETE FROM sessions WHERE expires < ?", (now_ms(),))
         self.send_json(200, {"ok": True},
                        f"sid={sid}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; Secure; SameSite=Strict")
@@ -477,10 +524,10 @@ def main():
         pw = sys.stdin.readline().strip()
         if len(pw) < 8:
             sys.exit("password must be at least 8 characters")
-        kv_set("parent_pw", hash_pw(pw))
-        db.execute("DELETE FROM sessions")
+        slot = 2 if "--slot" in args and args[args.index("--slot") + 1] == "2" else 1
+        set_pw(slot, pw)
         db.commit()
-        print("password set")
+        print("password set" + (" (second parent)" if slot == 2 else ""))
         return
     if kv_get("config") is None:
         kv_set("config", DEFAULT_CONFIG)

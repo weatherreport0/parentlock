@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
 
     private LinearLayout root;
     private boolean unlocked;
+    private int slotIn = 1; // which parent is logged in
 
     @Override
     protected void onCreate(Bundle b) {
@@ -90,19 +91,31 @@ public class MainActivity extends Activity {
     // ---------- parent auth ----------
 
     private void showCreate() {
+        showCreate(1);
+    }
+
+    /** Sets the password of parent 1 (main) or parent 2. */
+    private void showCreate(int slot) {
         root.removeAllViews();
-        title("Пароль родителя");
-        text("Придумайте пароль. Он нужен, чтобы менять настройки защиты. Ребёнку его не говорите.");
+        title(slot == 2 ? "Пароль второго родителя" : "Пароль родителя");
+        text(slot == 2
+                ? "Второй родитель входит в «Защиту» своим паролем и может менять все настройки. Ребёнку его не говорите."
+                : "Придумайте пароль. Он нужен, чтобы менять настройки защиты. Ребёнку его не говорите.");
         EditText p1 = password("Пароль (не короче 6 символов)");
         EditText p2 = password("Повторите пароль");
         button("Сохранить", v -> {
             String a = p1.getText().toString();
             if (a.length() < 6) { toast("Слишком короткий пароль"); return; }
             if (!a.equals(p2.getText().toString())) { toast("Пароли не совпадают"); return; }
-            savePassword(a);
+            int other = slot == 1 ? 2 : 1;
+            if (matches(a, other)) { toast("Пароль должен отличаться от пароля другого родителя"); return; }
+            savePassword(a, slot);
+            if (!unlocked) slotIn = slot;
             unlocked = true;
             showPanel();
+            if (slot == 2) toast("Пароль второго родителя сохранён");
         });
+        if (unlocked) button("Отмена", v -> showPanel());
     }
 
     private void showLogin() {
@@ -117,8 +130,10 @@ public class MainActivity extends Activity {
                 toast("Слишком много попыток. Подождите " + ((until - now) / 60000 + 1) + " мин.");
                 return;
             }
-            if (checkPassword(p.getText().toString())) {
+            int who = checkPassword(p.getText().toString());
+            if (who != 0) {
                 pr.edit().putInt("fails", 0).putLong("lock_until", 0).apply();
+                slotIn = who;
                 unlocked = true;
                 showPanel();
             } else {
@@ -255,7 +270,19 @@ public class MainActivity extends Activity {
             }
         });
 
-        button("Сменить пароль родителя", v -> showCreate());
+        section("Пароли");
+        text(slotIn == 2 ? "Вы вошли как второй родитель." : "Вы вошли как основной родитель."
+                + (hasPassword(2) ? " Пароль второго родителя задан." : " Пароль второго родителя не задан."));
+        button("Сменить свой пароль", v -> showCreate(slotIn));
+        if (slotIn == 1) {
+            button(hasPassword(2) ? "Сменить пароль второго родителя" : "Задать пароль второго родителя",
+                    v -> showCreate(2));
+            if (hasPassword(2)) {
+                button("Удалить пароль второго родителя", v -> confirm("Удалить пароль второго родителя?",
+                        "Второй родитель больше не сможет войти в «Защиту» на телефоне.",
+                        () -> { deletePassword(2); showPanel(); toast("Пароль второго родителя удалён"); }));
+            }
+        }
         button("Снять защиту и удалить владельца", v -> confirm(
                 "Снять защиту полностью?",
                 "Все запреты будут сняты, приложение перестанет быть владельцем телефона. Вернуть можно только через компьютер.",
@@ -342,25 +369,45 @@ public class MainActivity extends Activity {
 
     // ---------- password ----------
 
-    private boolean hasPassword() {
-        return Policy.prefs(this).getString("pw_hash", null) != null;
+    // Slot 1 = main parent ("pw_*"), slot 2 = second parent ("pw2_*").
+    private static String key(int slot, String what) {
+        return (slot == 2 ? "pw2_" : "pw_") + what;
     }
 
-    private void savePassword(String pw) {
+    private boolean hasPassword() {
+        return hasPassword(1);
+    }
+
+    private boolean hasPassword(int slot) {
+        return Policy.prefs(this).getString(key(slot, "hash"), null) != null;
+    }
+
+    private void savePassword(String pw, int slot) {
         byte[] salt = new byte[16];
         new SecureRandom().nextBytes(salt);
         Policy.prefs(this).edit()
-                .putString("pw_salt", Policy.toHex(salt))
-                .putString("pw_hash", Policy.toHex(hash(pw, salt)))
+                .putString(key(slot, "salt"), Policy.toHex(salt))
+                .putString(key(slot, "hash"), Policy.toHex(hash(pw, salt)))
                 .apply();
     }
 
-    private boolean checkPassword(String pw) {
+    private void deletePassword(int slot) {
+        Policy.prefs(this).edit().remove(key(slot, "salt")).remove(key(slot, "hash")).apply();
+    }
+
+    private boolean matches(String pw, int slot) {
         SharedPreferences p = Policy.prefs(this);
-        String salt = p.getString("pw_salt", null);
-        String h = p.getString("pw_hash", null);
+        String salt = p.getString(key(slot, "salt"), null);
+        String h = p.getString(key(slot, "hash"), null);
         if (salt == null || h == null) return false;
         return MessageDigest.isEqual(hash(pw, Policy.fromHex(salt)), Policy.fromHex(h));
+    }
+
+    /** Which parent this password belongs to: 1, 2, or 0 if none. */
+    private int checkPassword(String pw) {
+        if (matches(pw, 1)) return 1;
+        if (matches(pw, 2)) return 2;
+        return 0;
     }
 
     private static byte[] hash(String pw, byte[] salt) {

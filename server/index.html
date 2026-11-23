@@ -180,10 +180,22 @@
 
     <section data-shot="settings" class="card">
       <h2>Настройки</h2>
-      <div class="row">
+      <p class="muted" id="meLine"></p>
+      <b>Свой пароль</b>
+      <div class="row" style="margin:6px 0 14px">
         <input id="oldPw" type="password" placeholder="Старый пароль" autocomplete="current-password">
         <input id="newPw" type="password" placeholder="Новый пароль (от 8 символов)" autocomplete="new-password">
         <button id="pwBtn">Сменить пароль</button>
+      </div>
+      <div id="secondBox" class="hidden">
+        <b>Пароль второго родителя</b>
+        <div class="muted" id="secondState"></div>
+        <div class="row" style="margin:6px 0 14px">
+          <input id="curPw2" type="password" placeholder="Ваш пароль" autocomplete="current-password">
+          <input id="newPw2" type="password" placeholder="Пароль второго родителя" autocomplete="new-password">
+          <button id="pw2Btn">Сохранить</button>
+          <button id="pw2Del" class="danger hidden">Удалить</button>
+        </div>
       </div>
       <p class="muted" id="verLine"></p>
       <div class="row" style="margin-top:10px">
@@ -307,7 +319,13 @@ function render() {
   }
   document.querySelectorAll('[data-flag]').forEach(x => { if (x !== document.activeElement) x.checked = !!c[x.dataset.flag]; });
   if ($('#permPolicy') !== document.activeElement) $('#permPolicy').value = String(c.perm_policy || 0);
-  $('#verLine').textContent = 'Версия «Защиты» на телефоне: ' + (s.appVersion || '—') + (D.apkVersion ? ' · на сайте: ' + D.apkVersion : '');
+  $('#meLine').textContent = D.me === 2 ? 'Вы вошли как второй родитель.' : 'Вы вошли как основной родитель.';
+  $('#secondBox').classList.toggle('hidden', D.me !== 1);
+  $('#secondState').textContent = D.hasSecond ? 'Задан. Второй родитель входит своим паролем и может всё, кроме управления паролями.'
+                                              : 'Не задан. Задайте, чтобы второй родитель мог входить на сайт.';
+  $('#pw2Btn').textContent = D.hasSecond ? 'Сменить' : 'Задать';
+  $('#pw2Del').classList.toggle('hidden', !D.hasSecond);
+  $('#verLine').textContent ='Версия «Защиты» на телефоне: ' + (s.appVersion || '—') + (D.apkVersion ? ' · на сайте: ' + D.apkVersion : '');
   $('#updateBtn').disabled = !D.apkVersion || D.apkVersion === s.appVersion;
 
   // apps
@@ -421,7 +439,16 @@ document.addEventListener('change', e => {
 $('#pairBtn').onclick = () => act(() => api('/api/pair/new'), 'Код действует 15 минут');
 $('#repairBtn').onclick = () => { if (confirm('Получить новый код подключения? Старое подключение перестанет работать после ввода кода на телефоне.')) act(() => api('/api/pair/new').then(r => alert('Код: ' + r.code + '\nДействует 15 минут.'))); };
 $('#pwBtn').onclick = () => act(async () => { await api('/api/password', {old: $('#oldPw').value, new: $('#newPw').value}); $('#oldPw').value = $('#newPw').value = ''; showLogin(); }, 'Пароль изменён, войдите заново');
-$('#logoutBtn').onclick = async () => { await api('/api/logout'); showLogin(); };
+$('#pw2Btn').onclick = () => act(async () => {
+  await api('/api/password2', {current: $('#curPw2').value, new: $('#newPw2').value});
+  $('#curPw2').value = $('#newPw2').value = '';
+}, 'Пароль второго родителя сохранён');
+$('#pw2Del').onclick = () => {
+  if (!confirm('Удалить пароль второго родителя? Он больше не сможет войти на сайт.')) return;
+  act(async () => { await api('/api/password2', {current: $('#curPw2').value, new: ''}); $('#curPw2').value = ''; },
+      'Пароль второго родителя удалён');
+};
+$('#logoutBtn').onclick =async () => { await api('/api/logout'); showLogin(); };
 
 // ?only=status,actions shows only those cards; ?open=pkg opens an app's details (used for screenshots)
 const QS = new URLSearchParams(location.search);

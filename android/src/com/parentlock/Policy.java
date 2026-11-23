@@ -45,6 +45,7 @@ final class Policy {
             UserManager.DISALLOW_CONFIG_DATE_TIME,
             UserManager.DISALLOW_APPS_CONTROL,
             UserManager.DISALLOW_CONFIG_PRIVATE_DNS,
+            UserManager.DISALLOW_CONFIG_VPN,          // VPN apps can hide traffic or cut off the site
     };
 
     /** Lifted while the parent has "setup mode" on (ADB, accounts, installs from RuStore/APK). */

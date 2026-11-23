@@ -85,6 +85,28 @@ try:
     r = post("/api/sync", {"base_ver": 0, "state": {"day": "2026-11-22"}}, token=tok)
     assert [c["type"] for c in r["commands"]] == ["ring", "uninstall"] and r["commands"][1]["pkg"] == "com.x", r
 
+    # second parent
+    d = post("/api/dashboard"); assert d["me"] == 1 and d["hasSecond"] is False
+    post("/api/password2", {"current": "wrong", "new": "secondpass1"}, expect=403)
+    post("/api/password2", {"current": "testpass123", "new": "testpass123"}, expect=400)  # same as main
+    post("/api/password2", {"current": "testpass123", "new": "secondpass1"})
+    assert post("/api/dashboard")["hasSecond"] is True
+    main_cookie = cookie
+    cookie = None
+    post("/api/login", {"password": "secondpass1"})
+    d = post("/api/dashboard"); assert d["me"] == 2, d["me"]
+    post("/api/command", {"type": "bonus", "min": 15})                          # can manage the phone
+    post("/api/password2", {"current": "secondpass1", "new": "x" * 10}, expect=403)  # can't manage passwords
+    post("/api/password", {"old": "secondpass1", "new": "testpass123"}, expect=400)  # can't take main's password
+    post("/api/password", {"old": "secondpass1", "new": "secondpass2"})
+    post("/api/dashboard", expect=401)                                           # own sessions dropped
+    cookie = main_cookie
+    assert post("/api/dashboard")["me"] == 1, "main parent's session survives second's change"
+    post("/api/password2", {"current": "testpass123", "new": ""})                # delete
+    cookie = None
+    post("/api/login", {"password": "secondpass2"}, expect=403)
+    post("/api/login", {"password": "testpass123"})
+
     post("/api/password", {"old": "nope", "new": "newpass1234"}, expect=403)
     post("/api/password", {"old": "testpass123", "new": "newpass1234"})
     post("/api/dashboard", expect=401)  # sessions dropped
