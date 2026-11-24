@@ -26,10 +26,10 @@ PORT = int(os.environ.get("PARENTLOCK_PORT", "8765"))
 DEFAULT_CONFIG = {
     "limit": 0, "sleep_s": -1, "sleep_e": -1, "limit_we": -1, "sleep_we_s": -1, "sleep_we_e": -1,
     "allowed": [], "blocked": [], "applimits": {}, "locked": False, "filter": False,
-    "play_free": False, "apk": False, "debug": False, "accounts": False,
+    "play_free": False, "apk": False, "debug": False, "accounts": False, "vpn": False, "dns": False,
     "perm_policy": 0, "perms": {},
 }
-FLAGS = ("locked", "filter", "play_free", "apk", "debug", "accounts")
+FLAGS = ("locked", "filter", "play_free", "apk", "debug", "accounts", "vpn", "dns")
 PERM_GROUPS = ("camera", "mic", "location", "contacts", "phone", "sms", "media")
 COMMAND_TYPES = {"bonus", "free", "play", "locate", "notify", "ring", "uninstall", "update"}
 APK_PATH = HERE / "app.apk"

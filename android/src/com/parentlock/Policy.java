@@ -44,14 +44,14 @@ final class Policy {
             UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS,
             UserManager.DISALLOW_CONFIG_DATE_TIME,
             UserManager.DISALLOW_APPS_CONTROL,
-            UserManager.DISALLOW_CONFIG_PRIVATE_DNS,
-            UserManager.DISALLOW_CONFIG_VPN,          // VPN apps can hide traffic or cut off the site
     };
 
     /** Lifted while the parent has "setup mode" on (ADB, accounts, installs from RuStore/APK). */
     static final String[] LOCKED_ONLY = {
             UserManager.DISALLOW_DEBUGGING_FEATURES,
             UserManager.DISALLOW_MODIFY_ACCOUNTS,
+            UserManager.DISALLOW_CONFIG_PRIVATE_DNS,
+            UserManager.DISALLOW_CONFIG_VPN,
             UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY,
     };
 
@@ -97,6 +97,8 @@ final class Policy {
                 {UserManager.DISALLOW_DEBUGGING_FEATURES, "debug"},
                 {UserManager.DISALLOW_MODIFY_ACCOUNTS, "accounts"},
                 {UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY, "apk"},
+                {UserManager.DISALLOW_CONFIG_PRIVATE_DNS, "dns"},
+                {UserManager.DISALLOW_CONFIG_VPN, "vpn"},
         };
         for (String[] s : switchable) {
             if (setup || Config.flag(c, s[1])) clear(d, a, s[0], log); else add(d, a, s[0], log);

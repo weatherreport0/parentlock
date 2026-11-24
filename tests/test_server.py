@@ -76,6 +76,10 @@ try:
                                     "perm_policy": 2, "perms": {"com.x": {"camera": 2, "mic": 1, "bogus": 1, "sms": 7}}}})
     cfg = post("/api/dashboard")["config"]
     assert cfg["apk"] is True and cfg["debug"] is True and cfg["play_free"] is False, cfg
+    assert cfg["vpn"] is False and cfg["dns"] is False, "VPN and DNS are locked by default"
+    post("/api/config", {"config": {"vpn": True, "dns": True}})
+    cfg = post("/api/dashboard")["config"]
+    assert cfg["vpn"] is True and cfg["dns"] is True and cfg["apk"] is True, cfg
     assert cfg["limit_we"] == 180 and cfg["sleep_we_s"] == 1380 and cfg["perm_policy"] == 2, cfg
     assert cfg["perms"] == {"com.x": {"camera": 2, "mic": 1}}, cfg["perms"]
     assert cfg["limit"] == 90, "partial update keeps other keys"

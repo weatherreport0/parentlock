@@ -151,7 +151,7 @@ final class Config {
         try { return new JSONObject(p(c).getString("perms", "{}")); } catch (Exception e) { return new JSONObject(); }
     }
 
-    static final String[] FLAGS = {"play_free", "apk", "debug", "accounts"};
+    static final String[] FLAGS = {"play_free", "apk", "debug", "accounts", "vpn", "dns"};
 
     static JSONObject toJson(Context c) throws org.json.JSONException {
         JSONObject o = new JSONObject();
