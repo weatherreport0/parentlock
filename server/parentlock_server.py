@@ -227,7 +227,7 @@ def dashboard():
     since = now_ms() - 24 * 3600_000
     locs = db.execute("SELECT ts,lat,lon,acc FROM locations WHERE ts>? ORDER BY ts", (since,)).fetchall()
     last = db.execute("SELECT ts,lat,lon,acc FROM locations ORDER BY ts DESC LIMIT 1").fetchone()
-    days = db.execute("SELECT day,used_ms FROM daily ORDER BY day DESC LIMIT 14").fetchall()
+    days = db.execute("SELECT day,used_ms,usage FROM daily ORDER BY day DESC LIMIT 14").fetchall()
     pair = kv_get("pair")
     return {
         "state": state,
@@ -239,7 +239,7 @@ def dashboard():
         "events": [{"ts": t, "text": x} for t, x in events],
         "track": [dict(zip(("ts", "lat", "lon", "acc"), r)) for r in locs],
         "lastLocation": dict(zip(("ts", "lat", "lon", "acc"), last)) if last else None,
-        "days": [{"day": d, "usedMs": u} for d, u in days],
+        "days": [{"day": d, "usedMs": u, "usage": json.loads(us or "{}")} for d, u, us in days],
         "apkVersion": (HERE / "app.version").read_text().strip() if (HERE / "app.version").exists() else None,
         "now": now_ms(),
     }
@@ -493,9 +493,15 @@ def seed_demo():
                      {"id": "d2", "type": "app", "text": "Minecraft", "ts": now - 90_000}],
         "locations": [{"ts": now - 50_000, "lat": 55.7539, "lon": 37.6208, "acc": 12}],
     })
+    split = {"com.google.android.youtube": .4, "com.supercell.brawlstars": .3, "com.mojang.minecraftpe": .15,
+             "ru.yandex.music": .1, "com.android.chrome": .05}
     for i, mins in enumerate([95, 130, 118, 160, 75, 142, 86]):
         day = time.strftime("%Y-%m-%d", time.localtime(time.time() - (6 - i) * 86400))
-        db.execute("INSERT OR REPLACE INTO daily(day,used_ms,usage) VALUES(?,?,?)", (day, mins * 60000, "{}"))
+        if i == 6:
+            continue  # today comes from the state above
+        use = {p: int(mins * k * 60000) for p, k in split.items()}
+        db.execute("INSERT OR REPLACE INTO daily(day,used_ms,usage) VALUES(?,?,?)",
+                   (day, mins * 60000, json.dumps(use)))
     db.commit()
 
 
